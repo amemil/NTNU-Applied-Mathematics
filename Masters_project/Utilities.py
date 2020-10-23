@@ -72,10 +72,10 @@ class SimulatedData:
     def get_w0(self):
         return self.w0
         
-    def get_dataset(self):
+    def create_data(self):
         iterations = np.int(self.sec/self.binsize)
         t,W,s1,s2 = np.zeros(iterations),np.zeros(iterations),np.zeros(iterations),np.zeros(iterations)
-        W[0] = w0 #Initial value for weights
+        W[0] = self.w0 #Initial value for weights
         s1[0] = np.random.binomial(1,inverse_logit(self.b1)) #5.4 in article, generate spike/not for neuron 1
         for i in tqdm(range(1,iterations)):
             lr = learning_rule(s1,s2,self.Ap,self.Am,self.tau,self.tau,t,i,self.binsize)
@@ -83,12 +83,18 @@ class SimulatedData:
             s2[i] = np.random.binomial(1,inverse_logit(W[i]*s1[i-1]+self.b2)) #5.5 in article, spike/not neuron 2
             s1[i] = np.random.binomial(1,inverse_logit(self.b1)) #5.4
             t[i] = self.binsize*i #list with times (start time of current bin)
-        return(s1,s2,t,W)
+        self.s1 = s1 
+        self.s2 = s2
+        self.t = t
+        self.W = W
+    
+    def get_data(self):
+        return self.s1,self.s2,self.t,self.W
         
-    def plot_weight_trajectory(self,t,W):
+    def plot_weight_trajectory(self):
         plt.figure()
         plt.title('Weight trajectory')
-        plt.plot(t,W)
+        plt.plot(self.t,self.W)
         plt.xlabel('Time')
         plt.ylabel('Weight')
         plt.show()
@@ -97,5 +103,143 @@ class ParameterInference:
     '''
     Class for estimating b1,b2,w0,Ap,Am,tau from SimulatedData
     '''
-    def __init__(self, sec = 100, binsize = 1/200.0, P = 100, U = 100, it = 1500, N = 2):
-        
+    def __init__(self,s1,s2, sec = 120, binsize = 1/200.0, P = 100, U = 100, it = 1500, std=0.001, N = 2\
+                 , shapes_prior = np.array([1,1]), rates_prior = np.array([50,100])):
+        self.s1 = s1
+        self.s2 = s2
+        self.sec = sec
+        self.binsize = binsize
+        self.std = std
+        self.P = P
+        self.U = U
+        self.it = 1500
+        self.N = N
+        self.shapes_prior = shapes_prior
+        self.rates_prior = rates_prior
+    
+    def b1_estimation(self):
+        self.b1est = logit(np.sum(self.s1)/len(self.s1))
+        return self.b1est #5.23 
+
+    def normalize(self,vp): #normalisere vekter 
+        return vp/np.sum(vp)
+
+    def perplexity_func(self,vp_normalized):
+        h = -np.sum(vp_normalized*np.log(vp_normalized))
+        return np.exp(h)/self.P
+
+    def resampling(self,vp_normalized,wp):
+        wp_new = np.copy(wp)
+        indexes = np.linspace(0,self.P-1,self.P)
+        resampling_indexes = np.random.choice(indexes,self.P,p=vp_normalized)
+        for i in range(self.P):
+            wp_new[i] = np.copy(wp[resampling_indexes.astype(int)[i]])
+            return wp_new
+
+    def likelihood_step(self,s1prev,s2next,wcurr): #p(s2 given s1,w,theta)
+        return inverse_logit(wcurr*s1prev + self.b2est)**(s2next) * (1-inverse_logit(wcurr*s1prev + self.b2est))**(1-s2next)
+    
+    def parameter_priors(self):
+        return np.array([(np.random.gamma(self.shapes_prior[i],1/self.rates_prior[i])) for i in range(self.N)])
+
+    def proposal_step(self,shapes,theta):
+        return np.array([(np.random.gamma(shapes[i],theta[i]/shapes[i])) for i in range(self.N)])
+    
+    def adjust_variance(self,theta,shapes):
+        var_new = np.array([0,0])
+        while (any(i == 0 for i in var_new)):
+            var_new = theta[-self.U:].var(0)*(2.4**2)
+            self.U += 1
+            if self.U > self.it:
+                return shapes, np.array([(np.random.gamma(shapes[i],theta[-1][i]/shapes[i])) for i in range(self.N)])
+            new_shapes = np.array([((theta[-1][i]**2) / var_new[i]) for i in range(self.N)])
+            proposal = np.array([(np.random.gamma(new_shapes[i],theta[-1][i]/new_shapes[i])) for i in range(self.N)])
+        return new_shapes,proposal
+    
+    def ratio(self,prob_old,prob_next,shapes,theta_next,theta_prior):
+        spike_prob_ratio = prob_next / prob_old
+        prior_ratio, proposal_ratio = 1,1
+        for i in range(self.N):
+            prior_ratio *= gamma.pdf(theta_next[i],a=self.shapes_prior[i],scale=1/self.rates_prior[i])/\
+            gamma.pdf(theta_prior[i],a=self.shapes_prior[i],scale=1/self.rates_prior[i])
+            proposal_ratio *= gamma.pdf(theta_prior[i],a=shapes[i],scale=theta_next[i]/shapes[i])/\
+            gamma.pdf(theta_next[i],a=shapes[i],scale=theta_prior[i]/shapes[i])
+        return spike_prob_ratio * prior_ratio * proposal_ratio
+
+
+    def scaled2_spike_prob(self,old,new):
+        return np.exp(old - min(old,new)),np.exp(new - min(old,new))
+    
+    def b2_w0_estimation(self):
+        '''
+        Fisher scoring algorithm 
+        Two in parallell, since w0 is estimated with a subset of the data
+        '''
+        s1short,s2short = self.s1[:2000],self.s2[:2000]
+        beta,beta2 = np.array([0,0]),np.array([0,0])
+        x,x2 = np.array([np.ones(len(self.s1)-1),self.s1[:-1]]),np.array([np.ones(len(s1short)-1),s1short[:-1]])
+        i = 0
+        score,score2 = np.array([np.inf,np.inf]), np.array([np.inf,np.inf])
+        while(i < 1000 and any(abs(i) > 1e-10 for i in score) and any(abs(j) > 1e-10 for j in score2)):
+            eta,eta2 = np.matmul(beta,x),np.matmul(beta2,x2) #linear predictor
+            mu,mu2 = inverse_logit(eta),inverse_logit(eta2)
+            score,score2 = np.matmul(x,self.s2[1:] - mu),np.matmul(x2,s2short[1:] - mu2)
+            hessian_u,hessian_u2 = mu * (1-mu), mu2 *(1-mu2)
+            hessian,hessian2 = np.matmul(x*hessian_u,np.transpose(x)),np.matmul(x2*hessian_u2,np.transpose(x2))
+            delta,delta2 = np.matmul(np.linalg.inv(hessian),score),np.matmul(np.linalg.inv(hessian2),score2)
+            beta,beta2 = beta + delta, beta2 + delta2
+            i += 1
+        self.b2est = beta[0]
+        self.w0est = beta2[1]
+        return self.b2est,self.w0est
+
+
+    def particle_filter(self,theta):
+        '''
+        Particle filtering, (doesnt quite work yet, smth with weights vp)
+        Possible to speed it up? 
+        How to initiate w0 and vp?
+        '''
+        timesteps = np.int(self.sec/self.binsize)
+        t = np.zeros(timesteps)
+        wp = np.full((self.P,timesteps),self.w0est)
+        vp = np.ones(self.P)
+        log_posterior = 0
+        for i in tqdm(range(1,timesteps)):
+            v_normalized = self.normalize(vp)
+            perplexity = self.perplexity_func(v_normalized)
+            if perplexity < 0.66:
+                wp = self.resampling(v_normalized,wp)
+                vp = np.full(self.P,1/self.P)
+                v_normalized = self.normalize(vp)
+                t[i] = i*self.binsize
+            for p in range(self.P):
+                lr = learning_rule(self.s1,self.s2,theta[0],theta[0]*1.05,theta[1],theta[1],t,i,self.binsize) 
+                wp[p][i] = wp[p][i-1] + lr + np.random.normal(0,self.std) 
+                ls = self.likelihood_step(self.s1[i-1],self.s2[i],wp[p][i])
+                vp[p] = ls * vp[p]
+            log_posterior += np.log(np.sum(vp)/self.P)
+        return wp,t,log_posterior
+
+    def lr_param_estimation(self):
+        '''
+        Monte Carlo sampling with particle filtering, Metropolis Hastings algorithm
+        '''
+        theta_prior = self.parameter_priors()
+        theta = np.array([theta_prior])
+        shapes = np.copy(self.shapes_prior)
+        _,_,old_log_post = self.particle_filter(theta_prior)
+        for i in tqdm(range(1,self.it)):
+            if (i % self.U == 0):
+                shapes, theta_next = self.adjust_variance(theta,shapes)
+            else:    
+                theta_next = self.proposal_step(shapes,theta_prior)
+            _,_,new_log_post = self.particle_filter(theta_next)
+            prob_old,prob_next = self.scaled2_spike_prob(old_log_post,new_log_post)
+            r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
+            choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
+            theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
+            theta = np.vstack((theta, theta_choice))
+            theta_prior = np.copy(theta_choice)
+            old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
+        return theta
