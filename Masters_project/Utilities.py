@@ -21,18 +21,19 @@ def logit(x):
 def inverse_logit(x):
     return np.exp(x)/(1+np.exp(x))
 
-class SimulatedData:
+
+class SimulatedData():
     '''
     Ap, Am, tau : learning rule parameters
     b1,b2 : background noise constants for neuron 1 and neuron 2, determnining their baseline firing rate
     w0 : start value for synapse strength between neuron 1 and 2. 
     '''
-    def __init__(self,Ap=0.005, tau=0.02, std=0.001, sec=120.0, binsize=1/200.0,b1=-2.0, b2=-2.0, w0=1.0):
+    sec = 120
+    binsize = 1/200.0
+    def __init__(self,Ap=0.005, tau=0.02, std=0.001,b1=-2.0, b2=-2.0, w0=1.0):
         self.Ap = Ap
         self.tau = tau
         self.std = std
-        self.sec = sec
-        self.binsize = binsize
         self.Am = 1.05*self.Ap
         self.b1 = b1
         self.b2 = b2
@@ -44,10 +45,6 @@ class SimulatedData:
         self.tau = tau
     def set_std(self,std):
         self.std = std
-    def set_sec(self,sec):
-        self.sec = sec
-    def set_binsize(self,binsize):
-        self.binsize = binsize
     def set_b1(self,b1):
         self.b1 = b1
     def set_b2(self,b2):
@@ -61,10 +58,6 @@ class SimulatedData:
         return self.tau
     def get_std(self):
         return self.std
-    def get_sec(self):
-        return self.sec
-    def get_binsize(self):
-        return self.binsize
     def get_b1(self):
         return self.b1
     def get_b2(self):
@@ -103,12 +96,12 @@ class ParameterInference:
     '''
     Class for estimating b1,b2,w0,Ap,Am,tau from SimulatedData
     '''
-    def __init__(self,s1,s2, sec = 120, binsize = 1/200.0, P = 100, U = 100, it = 1500, std=0.001, N = 2\
+    sec = 120
+    binsize = 1/200.0
+    def __init__(self,s1,s2,P = 100, U = 100, it = 1500, std=0.001, N = 2\
                  , shapes_prior = np.array([1,1]), rates_prior = np.array([50,100])):
         self.s1 = s1
         self.s2 = s2
-        self.sec = sec
-        self.binsize = binsize
         self.std = std
         self.P = P
         self.U = U
