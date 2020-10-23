@@ -105,7 +105,7 @@ class ParameterInference:
         self.std = std
         self.P = P
         self.U = U
-        self.it = 1500
+        self.it = it
         self.N = N
         self.shapes_prior = shapes_prior
         self.rates_prior = rates_prior
