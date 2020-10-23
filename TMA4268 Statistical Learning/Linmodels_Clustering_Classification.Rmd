@@ -1,6 +1,6 @@
 ---
-title: "Compulsory exercise"
-author: "Emil Myhre and Lisa Erfjord"
+title: ""
+author: ""
 date: "1 4 2019"
 output: html_document
 ---
