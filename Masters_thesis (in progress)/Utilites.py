@@ -140,8 +140,8 @@ class ParameterInference:
     
     def adjust_variance(self,theta,shapes):
         var_new = np.array([0,0])
+        u_temp = self.U
         while (any(i == 0 for i in var_new)):
-            u_temp = self.U
             var_new = theta[-u_temp:].var(0)*(2.4**2)
             u_temp += 1
             if u_temp > self.it:
