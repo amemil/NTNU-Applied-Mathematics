@@ -141,9 +141,10 @@ class ParameterInference:
     def adjust_variance(self,theta,shapes):
         var_new = np.array([0,0])
         while (any(i == 0 for i in var_new)):
-            var_new = theta[-self.U:].var(0)*(2.4**2)
-            self.U += 1
-            if self.U > self.it:
+            u_temp = self.U
+            var_new = theta[-u_temp:].var(0)*(2.4**2)
+            u_temp += 1
+            if u_temp > self.it:
                 return shapes, np.array([(np.random.gamma(shapes[i],theta[-1][i]/shapes[i])) for i in range(self.N)])
             new_shapes = np.array([((theta[-1][i]**2) / var_new[i]) for i in range(self.N)])
             proposal = np.array([(np.random.gamma(new_shapes[i],theta[-1][i]/new_shapes[i])) for i in range(self.N)])
