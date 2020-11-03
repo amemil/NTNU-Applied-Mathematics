@@ -94,7 +94,7 @@ class SimulatedData():
         
 class ParameterInference:
     '''
-    Class for estimating b1,b2,w0,Ap,Am,tau from SimulatedData
+    Class for estimating b1,b2,w0,Ap,Am,tau from SimulatedData, given data s1,s2.
     '''
     sec = 120
     binsize = 1/200.0
