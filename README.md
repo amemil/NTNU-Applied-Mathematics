@@ -1,1 +1,1 @@
-A selection of projects I have been working on along the way to my M.Sc. degree in Applied Mathematics. Mainly using Python and R (Rmarkdown). 
+A little selection of projects I have been working on along the way to my M.Sc. degree in Applied Mathematics. Mainly using Python and R (Rmarkdown). 
