@@ -139,15 +139,16 @@ class ParameterInference:
         return np.array([(np.random.gamma(shapes[i],theta[i]/shapes[i])) for i in range(self.N)])
     
     def adjust_variance(self,theta,shapes):
+        means = theta[-self.U:].mean(0)
         var_new = np.array([0,0])
         u_temp = self.U
         while (any(i == 0 for i in var_new)):
             var_new = theta[-u_temp:].var(0)*(2.4**2)
-            u_temp += 1
+            u_temp += 50
             if u_temp > self.it:
                 return shapes, np.array([(np.random.gamma(shapes[i],theta[-1][i]/shapes[i])) for i in range(self.N)])
-            new_shapes = np.array([((theta[-1][i]**2) / var_new[i]) for i in range(self.N)])
-            proposal = np.array([(np.random.gamma(new_shapes[i],theta[-1][i]/new_shapes[i])) for i in range(self.N)])
+        new_shapes = np.array([((means**2) / var_new[i]) for i in range(self.N)])
+        proposal = np.array([(np.random.gamma(new_shapes[i],theta[-1][i]/new_shapes[i])) for i in range(self.N)])
         return new_shapes,proposal
     
     def ratio(self,prob_old,prob_next,shapes,theta_next,theta_prior):
@@ -196,7 +197,7 @@ class ParameterInference:
         '''
         timesteps = np.int(self.sec/self.binsize)
         t = np.zeros(timesteps)
-        wp = np.full((self.P,timesteps),self.w0est)
+        wp = np.full((self.P,timesteps),np.float(self.w0est))
         vp = np.ones(self.P)
         log_posterior = 0
         for i in tqdm(range(1,timesteps)):
@@ -206,15 +207,14 @@ class ParameterInference:
                 wp = self.resampling(v_normalized,wp)
                 vp = np.full(self.P,1/self.P)
                 v_normalized = self.normalize(vp)
-                t[i] = i*self.binsize
-            for p in range(self.P):
-                lr = learning_rule(self.s1,self.s2,theta[0],theta[0]*1.05,theta[1],theta[1],t,i,self.binsize) 
-                wp[p][i] = wp[p][i-1] + lr + np.random.normal(0,self.std) 
-                ls = self.likelihood_step(self.s1[i-1],self.s2[i],wp[p][i])
-                vp[p] = ls * vp[p]
-            log_posterior += np.log(np.sum(vp)/self.P)
+        lr = learning_rule(self.s1,self.s2,theta[0],theta[0]*1.05,theta[1],theta[1],t,i,self.binsize) 
+        ls = likelihood_step(self.s1[i-1],self.s2[i],wp[:,i-1],self.b2est)  
+        vp = ls*v_normalized
+        wp[:,i] = wp[:,i-1] + lr + np.random.normal(0,self.std,size = self.P)
+        t[i] = i*binsize
+        log_posterior += np.log(np.sum(vp)/self.P)
         return wp,t,log_posterior
-
+    
     def lr_param_estimation(self):
         '''
         Monte Carlo sampling with particle filtering, Metropolis Hastings algorithm
