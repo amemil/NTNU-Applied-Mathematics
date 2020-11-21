@@ -1,7 +1,5 @@
 ---
 title: "Categorical Regression"
-#author: "Emil Myhre, 10019, emilalvar.myhre@gmail.com"
-#date: "Vojin Dudic, 10004, vojin3.14@gmail.com"
 output: pdf_document
 ---
 
