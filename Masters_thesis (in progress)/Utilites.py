@@ -127,7 +127,7 @@ class ParameterInference:
         resampling_indexes = np.random.choice(indexes,self.P,p=vp_normalized)
         for i in range(self.P):
             wp_new[i] = np.copy(wp[resampling_indexes.astype(int)[i]])
-            return wp_new
+        return wp_new
 
     def likelihood_step(self,s1prev,s2next,wcurr): #p(s2 given s1,w,theta)
         return inverse_logit(wcurr*s1prev + self.b2est)**(s2next) * (1-inverse_logit(wcurr*s1prev + self.b2est))**(1-s2next)
