@@ -207,12 +207,12 @@ class ParameterInference:
                 wp = self.resampling(v_normalized,wp)
                 vp = np.full(self.P,1/self.P)
                 v_normalized = self.normalize(vp)
-        lr = learning_rule(self.s1,self.s2,theta[0],theta[0]*1.05,theta[1],theta[1],t,i,self.binsize) 
-        ls = likelihood_step(self.s1[i-1],self.s2[i],wp[:,i-1],self.b2est)  
-        vp = ls*v_normalized
-        wp[:,i] = wp[:,i-1] + lr + np.random.normal(0,self.std,size = self.P)
-        t[i] = i*binsize
-        log_posterior += np.log(np.sum(vp)/self.P)
+            lr = learning_rule(self.s1,self.s2,theta[0],theta[0]*1.05,theta[1],theta[1],t,i,self.binsize) 
+            ls = likelihood_step(self.s1[i-1],self.s2[i],wp[:,i-1],self.b2est)  
+            vp = ls*v_normalized
+            wp[:,i] = wp[:,i-1] + lr + np.random.normal(0,self.std,size = self.P)
+            t[i] = i*binsize
+            log_posterior += np.log(np.sum(vp)/self.P)
         return wp,t,log_posterior
     
     def lr_param_estimation(self):
