@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from tqdm import tqdm
 from scipy.stats import gamma
-import random
 from numba import njit
 @njit
 
@@ -98,13 +97,14 @@ class ParameterInference:
     '''
     sec = 120
     binsize = 1/200.0
-    def __init__(self,s1,s2,P = 100, U = 100, it = 1500, std=0.001, N = 2\
-                 , shapes_prior = np.array([1,1]), rates_prior = np.array([50,100])):
+    def __init__(self,s1,s2,P = 100, Usim = 100, Ualt = 200,it = 1500, std=0.001, N = 2\
+                 , shapes_prior = np.array([4,5]), rates_prior = np.array([50,100])):
         self.s1 = s1
         self.s2 = s2
         self.std = std
         self.P = P
-        self.U = U
+        self.Usim = Usim
+        self.Ualt = Ualt
         self.it = it
         self.N = N
         self.shapes_prior = shapes_prior
@@ -139,9 +139,9 @@ class ParameterInference:
         return np.array([(np.random.gamma(shapes[i],theta[i]/shapes[i])) for i in range(self.N)])
     
     def adjust_variance(self,theta,shapes):
-        means = theta[-self.U:].mean(0)
+        means = theta[-self.Usim:].mean(0)
         var_new = np.array([0,0])
-        u_temp = self.U
+        u_temp = self.Usim
         while (any(i == 0 for i in var_new)):
             var_new = theta[-u_temp:].var(0)*(2.4**2)
             u_temp += 50
@@ -200,7 +200,7 @@ class ParameterInference:
         wp = np.full((self.P,timesteps),np.float(self.w0est))
         vp = np.ones(self.P)
         log_posterior = 0
-        for i in tqdm(range(1,timesteps)):
+        for i in range(1,timesteps):
             v_normalized = self.normalize(vp)
             perplexity = self.perplexity_func(v_normalized)
             if perplexity < 0.66:
@@ -208,14 +208,15 @@ class ParameterInference:
                 vp = np.full(self.P,1/self.P)
                 v_normalized = self.normalize(vp)
             lr = learning_rule(self.s1,self.s2,theta[0],theta[0]*1.05,theta[1],theta[1],t,i,self.binsize) 
-            ls = self.likelihood_step(self.s1[i-1],self.s2[i],wp[:,i-1],self.b2est)  
+            ls = self.likelihood_step(self.s1[i-1],self.s2[i],wp[:,i-1])  
             vp = ls*v_normalized
             wp[:,i] = wp[:,i-1] + lr + np.random.normal(0,self.std,size = self.P)
             t[i] = i*self.binsize
             log_posterior += np.log(np.sum(vp)/self.P)
         return wp,t,log_posterior
     
-    def lr_param_estimation(self):
+
+    def standardMH(self):
         '''
         Monte Carlo sampling with particle filtering, Metropolis Hastings algorithm
         '''
@@ -224,7 +225,7 @@ class ParameterInference:
         shapes = np.copy(self.shapes_prior)
         _,_,old_log_post = self.particle_filter(theta_prior)
         for i in tqdm(range(1,self.it)):
-            if (i % self.U == 0):
+            if (i % self.Usim == 0):
                 shapes, theta_next = self.adjust_variance(theta,shapes)
             else:    
                 theta_next = self.proposal_step(shapes,theta_prior)
@@ -233,6 +234,66 @@ class ParameterInference:
             r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
             choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
             theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
+            print(theta_choice)
+            theta = np.vstack((theta, theta_choice))
+            theta_prior = np.copy(theta_choice)
+            old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
+        return theta
+    
+    
+    def adjust_variance_alternating(self,theta,par_ind,shapes):
+        mean = np.zeros(self.N)
+        var_new = np.zeros(self.N)
+        theta_new = np.copy(theta[-1])
+        u_temp = self.Ualt
+        while (any(i == 0 for i in var_new)):
+            for i in range(self.N):
+                if i == 0:
+                    mean[i] = theta[-u_temp+1::2].mean(0)[i]
+                    var_new[i] = theta[-u_temp+1::2].var(0)[i]*(2.4**2)
+                elif i == 1:
+                    mean[i] = theta[-u_temp::2].mean(0)[i]
+                    var_new[i] = theta[-u_temp::2].var(0)[i]*(2.4**2)
+                else:
+                    mean[i] = theta[-u_temp:].mean(0)[i]
+                    var_new[i] = theta[-u_temp:].var(0)[i]*(2.4**2)
+            u_temp+= 100
+            if u_temp > self.it:
+                return shapes, np.array([(np.random.gamma(shapes[i],theta[-1][i]/shapes[i])) for i in range(self.N)])
+        new_shapes = np.array([((mean[i]**2) / var_new[i]) for i in range(self.N)])
+        for i in par_ind:
+            theta_new[i] = np.random.gamma(new_shapes[i],theta[-1][i]/new_shapes[i])
+        return new_shapes,theta_new
+
+    
+    def proposal_step_alternating(self,shapes,theta,par_ind):
+        theta_new = np.copy(theta)
+        for i in par_ind:
+            theta_new[i] = np.random.gamma(shapes[i],theta[i]/shapes[i])
+        return theta_new
+
+    def alternatingMH(self):
+        '''
+        Alternating MH sampling
+        '''
+        theta_prior = self.parameter_priors()
+        theta = np.array([theta_prior])
+        shapes = np.copy(self.shapes_prior)
+        par_ind = np.linspace(0,self.N-1,self.N).astype(int)
+        old_log_post = self.particle_filter(theta_prior)
+        for i in tqdm(range(1,self.it)):
+            ex = [1,0][i % 2 == 0]
+            par_ind_temp = np.delete(par_ind,ex)
+            if (i % self.Ualt == 0):
+                shapes, theta_next = self.adjust_variance_alternating(theta,par_ind_temp,shapes)
+            else:    
+                theta_next = self.proposal_step_alternating(shapes,theta_prior,par_ind_temp)
+            _,_,new_log_post = self.particle_filter(theta_next)
+            prob_old,prob_next = self.scaled2_spike_prob(old_log_post,new_log_post)
+            r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
+            choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
+            theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
+            print(theta_choice)
             theta = np.vstack((theta, theta_choice))
             theta_prior = np.copy(theta_choice)
             old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
