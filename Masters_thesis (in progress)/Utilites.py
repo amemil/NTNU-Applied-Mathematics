@@ -97,7 +97,7 @@ class ParameterInference:
     '''
     sec = 120
     binsize = 1/200.0
-    def __init__(self,s1,s2,P = 100, Usim = 100, Ualt = 200,it = 1500, std=0.001, N = 2\
+    def __init__(self,s1,s2,P = 100, Usim = 100, Ualt = 200,it = 1500, std=0.0001, N = 2\
                  , shapes_prior = np.array([4,5]), rates_prior = np.array([50,100])):
         self.s1 = s1
         self.s2 = s2
@@ -147,7 +147,7 @@ class ParameterInference:
             u_temp += 50
             if u_temp > self.it:
                 return shapes, np.array([(np.random.gamma(shapes[i],theta[-1][i]/shapes[i])) for i in range(self.N)])
-        new_shapes = np.array([((means**2) / var_new[i]) for i in range(self.N)])
+        new_shapes = np.array([((means[i]**2) / var_new[i]) for i in range(self.N)])
         proposal = np.array([(np.random.gamma(new_shapes[i],theta[-1][i]/new_shapes[i])) for i in range(self.N)])
         return new_shapes,proposal
     
@@ -227,6 +227,8 @@ class ParameterInference:
         for i in tqdm(range(1,self.it)):
             if (i % self.Usim == 0):
                 shapes, theta_next = self.adjust_variance(theta,shapes)
+                #print('shapes:',shapes)
+                #print('proposals:',theta_next)
             else:    
                 theta_next = self.proposal_step(shapes,theta_prior)
             _,_,new_log_post = self.particle_filter(theta_next)
@@ -234,7 +236,7 @@ class ParameterInference:
             r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
             choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
             theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
-            print(theta_choice)
+            #print(theta_choice)
             theta = np.vstack((theta, theta_choice))
             theta_prior = np.copy(theta_choice)
             old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
@@ -280,7 +282,7 @@ class ParameterInference:
         theta = np.array([theta_prior])
         shapes = np.copy(self.shapes_prior)
         par_ind = np.linspace(0,self.N-1,self.N).astype(int)
-        old_log_post = self.particle_filter(theta_prior)
+        _,_,old_log_post = self.particle_filter(theta_prior)
         for i in tqdm(range(1,self.it)):
             ex = [1,0][i % 2 == 0]
             par_ind_temp = np.delete(par_ind,ex)
@@ -293,8 +295,21 @@ class ParameterInference:
             r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
             choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
             theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
-            print(theta_choice)
+            #print(theta_choice)
             theta = np.vstack((theta, theta_choice))
             theta_prior = np.copy(theta_choice)
             old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
         return theta
+        
+data = SimulatedData(Ap=0.005, tau=0.02, std=0.001,b1=-2.0, b2=-2.0, w0=1.0)
+data.create_data()
+s1,s2,t,W = data.get_data()
+
+
+inference = ParameterInference(s1, s2,P = 100, Usim = 100, Ualt = 200, it = 1500, std=0.0001, N = 2\
+                               ,shapes_prior = np.array([4,5]), rates_prior = np.array([50,100]))
+b1est = inference.b1_estimation()
+b2est,w0est = inference.b2_w0_estimation()
+
+theta_sim = inference.standardMH()
+theta_alt = inference.alternatingMH()
