@@ -67,14 +67,14 @@ class SimulatedData():
     def create_data(self):
         iterations = np.int(self.sec/self.binsize)
         t,W,s1,s2 = np.zeros(iterations),np.zeros(iterations),np.zeros(iterations),np.zeros(iterations)
-        W[0] = self.w0 #Initial value for weights
-        s1[0] = np.random.binomial(1,inverse_logit(self.b1)) #5.4 in article, generate spike/not for neuron 1
+        W[0] = self.w0
+        s1[0] = np.random.binomial(1,inverse_logit(self.b1))
         for i in tqdm(range(1,iterations)):
             lr = learning_rule(s1,s2,self.Ap,self.Am,self.tau,self.tau,t,i,self.binsize)
-            W[i] = W[i-1] + lr + np.random.normal(0,self.std) #updating weights, as in 5.8 in article
-            s2[i] = np.random.binomial(1,inverse_logit(W[i]*s1[i-1]+self.b2)) #5.5 in article, spike/not neuron 2
-            s1[i] = np.random.binomial(1,inverse_logit(self.b1)) #5.4
-            t[i] = self.binsize*i #list with times (start time of current bin)
+            W[i] = W[i-1] + lr + np.random.normal(0,self.std) 
+            s2[i] = np.random.binomial(1,inverse_logit(W[i]*s1[i-1]+self.b2))
+            s1[i] = np.random.binomial(1,inverse_logit(self.b1)) 
+            t[i] = self.binsize*i
         self.s1 = s1 
         self.s2 = s2
         self.t = t
@@ -112,9 +112,9 @@ class ParameterInference():
     
     def b1_estimation(self):
         self.b1est = logit(np.sum(self.s1)/len(self.s1))
-        return self.b1est #5.23 
+        return self.b1est
 
-    def normalize(self,vp): #normalisere vekter 
+    def normalize(self,vp):
         return vp/np.sum(vp)
 
     def perplexity_func(self,vp_normalized):
@@ -129,7 +129,7 @@ class ParameterInference():
             wp_new[i] = np.copy(wp[resampling_indexes.astype(int)[i]])
         return wp_new
 
-    def likelihood_step(self,s1prev,s2next,wcurr): #p(s2 given s1,w,theta)
+    def likelihood_step(self,s1prev,s2next,wcurr):
         return inverse_logit(wcurr*s1prev + self.b2est)**(s2next) * (1-inverse_logit(wcurr*s1prev + self.b2est))**(1-s2next)
     
     def parameter_priors(self):
@@ -227,8 +227,6 @@ class ParameterInference():
         for i in tqdm(range(1,self.it)):
             if (i % self.Usim == 0):
                 shapes, theta_next = self.adjust_variance(theta,shapes)
-                #print('shapes:',shapes)
-                #print('proposals:',theta_next)
             else:    
                 theta_next = self.proposal_step(shapes,theta_prior)
             _,_,new_log_post = self.particle_filter(theta_next)
@@ -236,7 +234,6 @@ class ParameterInference():
             r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
             choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
             theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
-            #print(theta_choice)
             theta = np.vstack((theta, theta_choice))
             theta_prior = np.copy(theta_choice)
             old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
@@ -295,7 +292,6 @@ class ParameterInference():
             r = self.ratio(prob_old,prob_next,shapes,theta_next,theta_prior)
             choice = np.int(np.random.choice([1,0], 1, p=[min(1,r),1-min(1,r)]))
             theta_choice = [np.copy(theta_prior),np.copy(theta_next)][choice == 1]
-            #print(theta_choice)
             theta = np.vstack((theta, theta_choice))
             theta_prior = np.copy(theta_choice)
             old_log_post = [np.copy(old_log_post),np.copy(new_log_post)][choice == 1]
@@ -306,7 +302,7 @@ data.create_data()
 s1,s2,t,W = data.get_data()
 
 
-inference = ParameterInference(s1, s2,P = 100, Usim = 100, Ualt = 200, it = 1500, std=0.0001, N = 2\
+inference = ParameterInference(s1, s2,P = 1000, Usim = 100, Ualt = 200, it = 1500, std=0.0001, N = 2\
                                ,shapes_prior = np.array([4,5]), rates_prior = np.array([50,100]))
 b1est = inference.b1_estimation()
 b2est,w0est = inference.b2_w0_estimation()
