@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Mar 24 21:44:29 2019
-
-@author: ronald
-"""
-
 def gradient_descent_augL(f, grad, updateL, x0, tol, mu_k, l_k):
     """
     Gradient descent algorithm
