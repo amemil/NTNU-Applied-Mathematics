@@ -14,8 +14,8 @@ from mpl_toolkits.mplot3d import Axes3D  # For 3-d plot
 from tqdm import tqdm
 from scipy.integrate import solve_ivp
 import scipy
-import algorithms as alg
-import plotting as plot
+import PorousMediumAlg as alg
+import PMEplots as plot
 
 if __name__ == "__main__":
     print('Main')
